@@ -6,16 +6,32 @@ import org.apache.spark.storage.StorageLevel
 
 import org.apache.spark.rdd.RDD
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.mapreduce.Job
+import org.apache.hadoop.io.Text
+import org.apache.hadoop.io.LongWritable
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
+
 object crawlNames {
 
  def main(args: Array[String]) {
 
-//	val crawl_file_locations_dir = "./crawl_file_locations"
 	val crawl_file_locations_dir = "s3n://aws-publicdatasets/common-crawl/crawl-data/CC-MAIN-2015-48"
 	val crawl_file_index = "wet.paths.gz"
+
 	val conf = new SparkConf().setAppName("Crawling for names")
 	val sc = new SparkContext(conf)
-	val i=1
+
+	val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
+	val awsSecretAccessKey = sys.env("AWS_SECRET_ACCESS_KEY")
+
+	val config = new Configuration
+
+	config.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
+	config.set("fs.s3.awsAccessKeyId", awsAccessKeyId)
+	config.set("fs.s3.awsSecretAccessKey", awsSecretAccessKey)
+
+	val i=6
 
 	val crawlFiles = sc.textFile(crawl_file_locations_dir + "/" + crawl_file_index)
 	println("Wet.paths = %s".format(crawlFiles))
@@ -33,23 +49,17 @@ object crawlNames {
 		val fullCrawlName = searchFile
 		println("%s".format(fullCrawlName))
 
-		val crawlData = sc.textFile(fullCrawlName)
-		crawlData.persist(StorageLevel.DISK_ONLY)
-		crawlData.saveAsTextFile("All" + crawlFileID)
+		val crawlData = sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], config).map(_._2.toString)
+		val crawlData2 = sc.textFile(fullCrawlName)
+		val numpages = crawlData2.filter(line=>line.contains("WARC-Target-URI: ")).count()
+/*		crawlData.persist(StorageLevel.DISK_ONLY) */
+/*		crawlData.saveAsTextFile("All" + crawlFileID) */
 
-		val categorizeEachLine = crawlData.flatMap(line => ( {
-			
-			if ( line.contains("WARC-Target-URI: ") == true ) "header" else "line" }, line, { if ( line.contains("Donald Trump") == true) 1 else 0 }))
-//		categorizeEachLine.saveAsTextFile("Categorized" + crawlFileID)
+		val keyValCrawlData = crawlData.map(x=>(x.split("\n")(0), x))
 
-//		val pageurllines = crawlData.filter(x=> x.contains("WARC-Target-URI:"))
-//		val pageurls = pageurllines.flatMap(line => ( {
-//			val webpageNamePattern = """^.*WARC-Target-URI: ([\D\d]+)""".r;
-//			val webpageNamePattern(pageurl) = line;
-//			pageurl
-//			}))
-		val trumpCount = crawlData.filter(x=> x.contains("Donald Trump")).count()
-		println("No. of webpages searched: %d\nNo. of lines Donald Trump is mentioned: %d".format(pageurls.count(), trumpCount))
+		val trumpData = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") }
+/*		trumpData.saveAsTextFile("Trump" + crawlFileID); */
+		println("No. of webpages searched: %d(new) %d(old)\nNo. of lines Donald Trump is mentioned: %d".format(keyValCrawlData.count()-1, numpages, trumpData.count()))
 
 //		val webpageCrawlData = crawlData.map(file=>file.split("WARC/1.0"))
 		
