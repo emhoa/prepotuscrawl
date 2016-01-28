@@ -12,6 +12,11 @@ import org.apache.hadoop.io.Text
 import org.apache.hadoop.io.LongWritable
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
 
+import com.esotericsoftware.kryo.Kryo
+import com.esotericsoftware.kryo.Serializer
+import com.esotericsoftware.kryo.io.Input
+import com.esotericsoftware.kryo.io.Output
+
 object crawlNames {
 
  def main(args: Array[String]) {
@@ -20,6 +25,9 @@ object crawlNames {
 	val crawl_file_index = "wet.paths.gz"
 
 	val conf = new SparkConf().setAppName("Crawling for names")
+	conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+	conf.registerKryoClasses(Array(classOf[TextInputFormat],classOf[LongWritable], classOf[Text]))
+	
 	val sc = new SparkContext(conf)
 
 	val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
@@ -34,12 +42,12 @@ object crawlNames {
 	val i=6
 
 	val crawlFiles = sc.textFile(crawl_file_locations_dir + "/" + crawl_file_index)
-	println("Wet.paths = %s".format(crawlFiles))
-	val crawlFile = crawlFiles.take(i)
-	crawlFile.foreach(printCounts)
+	println("No. files = %d; Wet.paths = %s".format(crawlFiles.count(), crawlFiles))
+	crawlFiles.take(35000).foreach(printCounts)
+
 	
 	def printCounts(crawlFile: String) {
-	
+
 		val protocol = "s3n://"
 		val crawlHeader = "aws-publicdatasets/"
 		val searchFile = protocol + crawlHeader + crawlFile
@@ -52,8 +60,8 @@ object crawlNames {
 		val crawlData = sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], config).map(_._2.toString)
 		val crawlData2 = sc.textFile(fullCrawlName)
 		val numpages = crawlData2.filter(line=>line.contains("WARC-Target-URI: ")).count()
-/*		crawlData.persist(StorageLevel.DISK_ONLY) */
-/*		crawlData.saveAsTextFile("All" + crawlFileID) */
+//		crawlData.persist(StorageLevel.DISK_ONLY)
+//		crawlData.saveAsTextFile("All" + crawlFileID)
 
 		val keyValCrawlData = crawlData.map(x=>(x.split("\n")(0), x))
 
@@ -105,6 +113,7 @@ object crawlNames {
 //		val ClintonCount = Clinton.count()
 
 //		println("Trump count: " + TrumpCount + "Clinton count: " + ClintonCount)
+
 
  }
 }
