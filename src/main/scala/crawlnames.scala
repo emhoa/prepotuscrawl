@@ -8,9 +8,25 @@ import org.apache.spark.rdd.RDD
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.Job
-import org.apache.hadoop.io.Text
-import org.apache.hadoop.io.LongWritable
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
+
+import org.apache.hadoop.io.{Text, LongWritable}
+import org.apache.hadoop.io.LongWritable
+import org.apache.hadoop.hbase.KeyValue
+import org.apache.hadoop.hbase.mapreduce.TableOutputFormat
+import org.apache.hadoop.hbase.mapreduce.TableInputFormat
+import org.apache.hadoop.hbase.mapreduce.HFileOutputFormat
+import org.apache.hadoop.hbase.mapreduce.LoadIncrementalHFiles
+import org.apache.hadoop.hbase.HColumnDescriptor
+import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.hbase.client.{HConnectionManager, Connection, HTable}
+
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable
+import org.apache.hadoop.hbase.{HBaseConfiguration, HTableDescriptor, TableName}
+import org.apache.hadoop.fs.Path
+
 
 import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.Serializer
@@ -18,8 +34,8 @@ import com.esotericsoftware.kryo.io.Input
 import com.esotericsoftware.kryo.io.Output
 
 object crawlNames {
-
- def main(args: Array[String]) {
+ 
+  def main(args: Array[String]) {
 
 	val crawl_file_locations_dir = "s3n://aws-publicdatasets/common-crawl/crawl-data/CC-MAIN-2015-48"
 	val crawl_file_index = "wet.paths.gz"
@@ -27,93 +43,84 @@ object crawlNames {
 	val conf = new SparkConf().setAppName("Crawling for names")
 	conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 	conf.registerKryoClasses(Array(classOf[TextInputFormat],classOf[LongWritable], classOf[Text]))
-	
+
 	val sc = new SparkContext(conf)
 
-	val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
-	val awsSecretAccessKey = sys.env("AWS_SECRET_ACCESS_KEY")
+	//val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
 
-	val config = new Configuration
+	//val awsSecretAccessKey = sys.env("AWS_SECRET_ACCESS_KEY")
 
-	config.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
-	config.set("fs.s3.awsAccessKeyId", awsAccessKeyId)
-	config.set("fs.s3.awsSecretAccessKey", awsSecretAccessKey)
+	val awsSecretAccessKey = "MB35BZsiDvnqyZAIW/J308ZAV3OrnnrQbxlQAr3r"
+	val awsAccessKeyId = "AKIAIJZWSTLHYX636UEQ"
+	val hadoopConf = sc.hadoopConfiguration
+	hadoopConf.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
+	hadoopConf.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
 
-	val i=6
-
-	val crawlFiles = sc.textFile(crawl_file_locations_dir + "/" + crawl_file_index)
-	println("No. files = %d; Wet.paths = %s".format(crawlFiles.count(), crawlFiles))
-	crawlFiles.take(35000).foreach(printCounts)
-
+	val localConfig = new Configuration()
+	localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
 	
-	def printCounts(crawlFile: String) {
+	localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
+	localConfig.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
+	localConfig.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
 
-		val protocol = "s3n://"
-		val crawlHeader = "aws-publicdatasets/"
+	val gzcrawlFiles = sc.textFile(crawl_file_locations_dir + "/" + crawl_file_index)
+	println("No. files = %d; Wet.paths = %s".format(gzcrawlFiles.count(), gzcrawlFiles))
+	
+	val hbaseconf = HBaseConfiguration.create(localConfig)	
+	val hbaseConn = HConnectionManager.createConnection(hbaseconf)
+
+	hbaseconf.set(TableOutputFormat.OUTPUT_TABLE, "candidate_crawl")
+	val hbasejob = Job.getInstance(hbaseconf)
+	hbasejob.setMapOutputKeyClass(classOf[ImmutableBytesWritable])
+	hbasejob.setMapOutputValueClass(classOf[KeyValue])
+
+	val protocol = "s3n://"
+	val crawlHeader = "aws-publicdatasets/"
+	val crawlFileIDpattern1 = """^.*/segments/([\s\d\D]+)/wet/.*$""".r
+	val crawlFileIDpattern2 = """^.*wet/CC-MAIN-([\d\D]+)-ip.*$""".r
+
+
+	// crawlFiles.take(1).foreach(printCounts)
+	gzcrawlFiles.collect().foreach(parseGzipFile)
+//	gzcrawlFiles.foreachPartition(parseGzipFile)
+
+	def parseGzipFile(crawlFile: String) {
+
 		val searchFile = protocol + crawlHeader + crawlFile
-		val crawlFileIDpattern = """^.*/wet/([\D\d]+)-ip.*$""".r
-		val crawlFileIDpattern(crawlFileID) = crawlFile
+		val crawlFileIDpattern1(crawlFileID1) = crawlFile
+		val crawlFileIDpattern2(crawlFileID2) = crawlFile
+		val crawlFileID = crawlFileID1 + crawlFileID2
 
+		val getLastFourDigitPattern = """^.*-.*-.*-([\d]+)""".r
+	//	val getLastFourDigitPattern(crawlFileNum) = crawlFileID
 		val fullCrawlName = searchFile
-		println("%s".format(fullCrawlName))
 
-		val crawlData = sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], config).map(_._2.toString)
-		val crawlData2 = sc.textFile(fullCrawlName)
-		val numpages = crawlData2.filter(line=>line.contains("WARC-Target-URI: ")).count()
-//		crawlData.persist(StorageLevel.DISK_ONLY)
-//		crawlData.saveAsTextFile("All" + crawlFileID)
+
+		val crawlData =	sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], localConfig).map(_._2.toString)
 
 		val keyValCrawlData = crawlData.map(x=>(x.split("\n")(0), x))
-
-		val trumpData = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") }
-/*		trumpData.saveAsTextFile("Trump" + crawlFileID); */
-		println("No. of webpages searched: %d(new) %d(old)\nNo. of lines Donald Trump is mentioned: %d".format(keyValCrawlData.count()-1, numpages, trumpData.count()))
-
-//		val webpageCrawlData = crawlData.map(file=>file.split("WARC/1.0"))
+		// Connect to the table	
+		val hbasetable = new HTable(TableName.valueOf("candidate_crawl"), hbaseConn)
+		HFileOutputFormat.configureIncrementalLoad(hbasejob, hbasetable)
+		val candidates = List("Donald Trump", "Hillary Clinton", "Ted Cruz", "Bernie Sanders")
+		for (candidate <- candidates) {
 		
-//		webpageCrawlData.persist()
-//		webpageCrawlData.foreach(trumpCount)
-	
-	}
+			val urls = keyValCrawlData.filter{ case (key, value) => value.contains(candidate) }.keys
+//			val numUrls = urls.count
+//			println("No. of webpages searched: %d(new)\nNo. of lines candidate %s is mentioned: %d".format(keyValCrawlData.count()-1, candidate, numUrls))
 
-	def trumpCount(webpageCrawlData: Array[String]) { 
-		val pc = prezCount(webpageCrawlData, "Donald Trump")  
-	}
+			val candidateSaveToDB = urls.map{ url => {
+			val kv: KeyValue = new KeyValue(Bytes.toBytes(url), "cc".getBytes(), candidate.getBytes(), "1".getBytes()).shallowCopy
+			(new ImmutableBytesWritable(url.getBytes()), kv)
+				}}
 
-	def prezCount(webpageCrawlData: Array[String], candidate: String) {
-
-		val prezPattern = """^.*(Donald Trump).*$""".r
-//		val prezPattern(prezFilter) = webpageCrawlData
- 
-		val prezFilter = webpageCrawlData.filter(name => name.contains(candidate))
-		val prezCtr = prezFilter.length
-//		Trump.saveAsTextFile("Trump" + crawlFileID)
-//		val TrumpCount = Trump.count()
-//		if ( prezFilter == candidate ) {
-		if ( prezCtr > 0)  {
-			println("%s".format(webpageCrawlData(0)))
-			val webpageNameLine = webpageCrawlData.filter(name => name.contains("WARC-Target-URI"))
-			val webpageNamePattern = """^.*WARC-Target-URI: ([\D\d]+) WARC.*$""".r
-			val webpageNamePattern(webpageName) = webpageNameLine(0)
-
-			val webpageText = webpageCrawlData.filter(line=> !line.contains("WARC-"))
-//
-//	 			val warcHeaders = "^WARC-.*$".r
-//				val warcHeaders(webpageData) = line
-
-			val webpageDataKeys = webpageText.flatMap(words=>words.split(" "))
-			val wordCountPairs = webpageDataKeys.groupBy(n=>n).map(t=>(t._1,t._2.length))
-//			val wordCountPairs = webpageDataKeys.map(x=> (x,1))
-//			val reducedWordCountPairs = wordCountPairs.reduce((x,y)=>x+y)
+			candidateSaveToDB.saveAsNewAPIHadoopFile("/tmp/" + candidate + crawlFileID, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat], hbaseconf)
+			val bulkLoader = new LoadIncrementalHFiles(hbaseconf)
+			bulkLoader.doBulkLoad(new Path("/tmp/" + candidate + crawlFileID), hbasetable)
 		}
-		
-	}
-//		val Clinton = crawlData.filter(name => name.contains("Hillary Clinton"))
-//		Clinton.saveAsTextFile("Clinton" +  crawlFileID)
-//		val ClintonCount = Clinton.count()
-
-//		println("Trump count: " + TrumpCount + "Clinton count: " + ClintonCount)
-
-
- }
+			
+	hbasetable.close
+	}		
+	hbaseConn.close	
+  }
 }
