@@ -32,6 +32,7 @@ import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.Serializer
 import com.esotericsoftware.kryo.io.Input
 import com.esotericsoftware.kryo.io.Output
+import scala.collection.mutable.ArrayBuffer
 
 object crawlNames {
  
@@ -46,12 +47,10 @@ object crawlNames {
 
 	val sc = new SparkContext(conf)
 
-	//val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
+	val awsAccessKeyId = sys.env("AWS_ACCESS_KEY_ID")
+	val awsSecretAccessKey = sys.env("AWS_SECRET_ACCESS_KEY")
 
-	//val awsSecretAccessKey = sys.env("AWS_SECRET_ACCESS_KEY")
-
-	val awsSecretAccessKey = "MB35BZsiDvnqyZAIW/J308ZAV3OrnnrQbxlQAr3r"
-	val awsAccessKeyId = "AKIAIJZWSTLHYX636UEQ"
+	// Setting up configuration variables
 	val hadoopConf = sc.hadoopConfiguration
 	hadoopConf.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
 	hadoopConf.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
@@ -59,68 +58,118 @@ object crawlNames {
 	val localConfig = new Configuration()
 	localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
 	
-	localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
-	localConfig.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
-	localConfig.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
+//	localConfig.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
+//	localConfig.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
 
+	val hbaseconf = HBaseConfiguration.create()	
+
+	// Grab the file off S3 giving the location of Common Crawl text files
 	val gzcrawlFiles = sc.textFile(crawl_file_locations_dir + "/" + crawl_file_index)
-	println("No. files = %d; Wet.paths = %s".format(gzcrawlFiles.count(), gzcrawlFiles))
-	
-	val hbaseconf = HBaseConfiguration.create(localConfig)	
-	val hbaseConn = HConnectionManager.createConnection(hbaseconf)
-
-	hbaseconf.set(TableOutputFormat.OUTPUT_TABLE, "candidate_crawl")
-	val hbasejob = Job.getInstance(hbaseconf)
-	hbasejob.setMapOutputKeyClass(classOf[ImmutableBytesWritable])
-	hbasejob.setMapOutputValueClass(classOf[KeyValue])
 
 	val protocol = "s3n://"
 	val crawlHeader = "aws-publicdatasets/"
 	val crawlFileIDpattern1 = """^.*/segments/([\s\d\D]+)/wet/.*$""".r
 	val crawlFileIDpattern2 = """^.*wet/CC-MAIN-([\d\D]+)-ip.*$""".r
 
+	// Setting variables to be used for caching of RDDs
+	var i=1
+	var hdFiles = new Array[RDD[(LongWritable, Text)]](3)
 
-	// crawlFiles.take(1).foreach(printCounts)
-	gzcrawlFiles.collect().foreach(parseGzipFile)
-//	gzcrawlFiles.foreachPartition(parseGzipFile)
+	// Iterate through the 35,700 file names
+        val allgzcrawlFiles = gzcrawlFiles.collect()
 
-	def parseGzipFile(crawlFile: String) {
+	for (crawlFile <- allgzcrawlFiles) {
 
 		val searchFile = protocol + crawlHeader + crawlFile
+             
 		val crawlFileIDpattern1(crawlFileID1) = crawlFile
-		val crawlFileIDpattern2(crawlFileID2) = crawlFile
-		val crawlFileID = crawlFileID1 + crawlFileID2
+                val crawlFileIDpattern2(crawlFileID2) = crawlFile
+                val crawlFileID = crawlFileID1 + crawlFileID2
 
-		val getLastFourDigitPattern = """^.*-.*-.*-([\d]+)""".r
-	//	val getLastFourDigitPattern(crawlFileNum) = crawlFileID
 		val fullCrawlName = searchFile
 
+		// Grab file off S3
+		val hdFile = sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], localConfig)
 
-		val crawlData =	sc.newAPIHadoopFile(fullCrawlName, classOf[TextInputFormat],classOf[LongWritable], classOf[Text], localConfig).map(_._2.toString)
+		// Hold on to file and process only if we possess three
+		hdFiles(i-1) = hdFile
 
+		if (i % 3 == 0) {  // Act only on batches of three RDDs
+
+			val hdFile = hdFiles(i-3).union(hdFiles(i-2).union(hdFiles(i-1)))
+			// Send the three-large RDD for saving
+			saveCrawlData(crawlFileID, hdFile)
+
+			// Reset batch counter
+         		i=0
+                }	
+		i = i+1
+	    }
+	    iteration = iteration + 1	
+	} // end of do for (crawlFile <- allgzcrawlFiles) {
+
+
+	if (i > 1) {  // take care of any remaining onsies, twosies
+		if (i == 3) {
+			saveCrawlData("LASTONE", hdFiles(i-2).union(hdFiles(i-3)))
+		}
+		else {
+             		saveCrawlData("LASTONE", hdFiles(i-2))      
+		}
+	       		fileNames.clear()
+      }	
+
+	// function to parse RDD and save to HBase
+	def saveCrawlData(crawlFileID: String, hdFile: RDD[(LongWritable, Text)]) {
+		val crawlData = hdFile.map(_._2.toString)
+
+		//Grab URL and make that the key; value is the rest of record
 		val keyValCrawlData = crawlData.map(x=>(x.split("\n")(0), x))
+
+		//Filter to subset of interested names
+		val urlsSubset = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") || value.contains("Hillary Clinton") || value.contains("Ted Cruz") || value.contains("Bernie Sanders") }
+
+		val candidates = List("Donald Trump", "Hillary Clinton", "Ted Cruz", "Bernie Sanders")
+
+		// Walk filtered subset looking for names that hit		
+		val urls = urlsSubset.map(x=>{ 
+			val str = new StringBuilder
+			for (candidate <- candidates) {
+				if (x._2.contains(candidate)) {
+					str.append(candidate(0))
+				}	 
+			}
+			val kv: KeyValue = new KeyValue(Bytes.toBytes(x._1), "cc".getBytes(), "candidate".getBytes(), str.toString.getBytes()).shallowCopy
+			(new ImmutableBytesWritable(x._1.getBytes()), kv)})
+
+		// Temporarily save to HDFS in advance of DB save
+		urls.saveAsNewAPIHadoopFile("/tmp/fast" + crawlFileID, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat], hbaseconf)
+
+             	anotherSendToHbase("/tmp/fast" + crawlFileID)
+       	}
+	
+	// Function to save to HBase
+	def anotherSendToHbase(fileName: String) {
+	
 		// Connect to the table	
+		val hbaseconf = HBaseConfiguration.create()	
+		val hbaseConn = HConnectionManager.createConnection(hbaseconf)
+
+		hbaseconf.set(TableOutputFormat.OUTPUT_TABLE, "candidate_crawl")
+
+		val hbasejob = Job.getInstance(hbaseconf)
+		hbasejob.setMapOutputKeyClass(classOf[ImmutableBytesWritable])
+		hbasejob.setMapOutputValueClass(classOf[KeyValue])
+
 		val hbasetable = new HTable(TableName.valueOf("candidate_crawl"), hbaseConn)
 		HFileOutputFormat.configureIncrementalLoad(hbasejob, hbasetable)
-		val candidates = List("Donald Trump", "Hillary Clinton", "Ted Cruz", "Bernie Sanders")
-		for (candidate <- candidates) {
-		
-			val urls = keyValCrawlData.filter{ case (key, value) => value.contains(candidate) }.keys
-//			val numUrls = urls.count
-//			println("No. of webpages searched: %d(new)\nNo. of lines candidate %s is mentioned: %d".format(keyValCrawlData.count()-1, candidate, numUrls))
 
-			val candidateSaveToDB = urls.map{ url => {
-			val kv: KeyValue = new KeyValue(Bytes.toBytes(url), "cc".getBytes(), candidate.getBytes(), "1".getBytes()).shallowCopy
-			(new ImmutableBytesWritable(url.getBytes()), kv)
-				}}
-
-			candidateSaveToDB.saveAsNewAPIHadoopFile("/tmp/" + candidate + crawlFileID, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat], hbaseconf)
-			val bulkLoader = new LoadIncrementalHFiles(hbaseconf)
-			bulkLoader.doBulkLoad(new Path("/tmp/" + candidate + crawlFileID), hbasetable)
-		}
-			
-	hbasetable.close
+		val bulkLoader = new LoadIncrementalHFiles(hbaseconf)
+		bulkLoader.doBulkLoad(new Path(fileName), hbasetable)
+				
+		hbasetable.close
+		hbaseConn.close	
 	}		
-	hbaseConn.close	
+
   }
 }
