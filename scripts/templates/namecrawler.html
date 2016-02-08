@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block candidateblock %}
+
+<div class="row" style="height:100vh;">
+               <div class="col-md-4 col-md-offset-4" style="margin-top:10vh;">
+                     <form action"namecrawlerresults.html" method="POST">
+<!-- action is the html template that will return the result to this input query -->
+                               <div class="form-group text-center">
+                                        <label style="font-weight:300; font-size: 30px;">Select a candidate to find out which websites mentioned them sometime in November 2015: </label>
+                                        <select class="form-control" name="candidate" style="font-weight:300; font-size: 18px;">
+                                                <option>Donald Trump</option>
+                                                <option>Hillary Clinton</option>                                                <option>Ted Cruz</option>
+                                                <option>Bernie Sanders</option>
+                                        </select>
+                                        <br /><br />
+                                       <label style="font-weight:300; font-size:30px;">Limit records retrieved: </label>
+                                       <br /><br />
+                                       <select class="form-control" name="numrecords" style="font-weight:300; font-size: 18px;">
+                                               <option>100</option>
+                                               <option>1000</option>
+                                               <option>None</option>
+                                       </select>
+                                       <br /><br />
+
+                                       <button type="submit" value="Send" name="candidateblock-container" class="btn btn-default id-submit">Submit</button>
+                               </div>
+                       </form>
+               </div>
+       </div>
+
+{% endblock %}
