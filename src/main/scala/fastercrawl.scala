@@ -32,8 +32,6 @@ import com.esotericsoftware.kryo.io.Output
 
 import scala.collection.mutable.ArrayBuffer
 
-int DEFAULTENDFILENUM = -1
-
 object crawlNames {
 
   def main(args: Array[String]) {
