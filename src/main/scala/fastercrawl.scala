@@ -63,13 +63,19 @@ object crawlNames {
        val hadoopConf = sc.hadoopConfiguration
         hadoopConf.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
         hadoopConf.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
+        
+        // Increase connection configs to prevent S3 socket timeout errors
+        hadoopConf.set("fs.s3n.connection.maximum", "500")
+        hadoopConf.set("fs.s3n.connection.timeout", "10000")
 
         val localConfig = new Configuration()
         localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
 
         localConfig.set("fs.s3n.awsAccessKeyId", awsAccessKeyId)
         localConfig.set("fs.s3n.awsSecretAccessKey", awsSecretAccessKey)
-
+        localConfig.set("fs.s3n.connection.maximum", "500")
+        localConfig.set("fs.s3n.connection.timeout", "10000")
+        
         val hbaseconf = HBaseConfiguration.create()
 
         // Grab the file off S3 giving the location of Common Crawl text files
