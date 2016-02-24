@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block candidatechart %}
+
+<div class="col-md-4 col-md-offset-4" style="margin-top:6vh;text-align:left">
+<h3>Presidential candidates with most web (URI) mentions in November {{ timeframe }}</h3>
+<svg class="chart"></svg></a>
+ </div>
+
+<script src="http://d3js.org/d3.v3.min.js"></script>
+ <script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
+ <script>
+
+var window_width = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+
+var margin = 20,
+        yaxislabelwidth = 200,
+        tipoffsetwidth = 20,
+        barHeight = 50;
+
+var x = d3.scale.linear()
+        .range([0, (window_width-yaxislabelwidth-margin-tipoffsetwidth)*.8]);
+
+var y1 = d3.scale.ordinal();
+
+var color = d3.scale.ordinal()
+        .range(["#ca0020", "#f4a582", "#0571b0", "#92c5de"]);
+
+var yAxis = d3.svg.axis()
+    .scale(y1)
+    .orient("left")
+    .tickSize(0);
+
+var chart = d3.select(".chart")
+    .attr("width", window_width-margin);
+
+var tip = d3.tip()
+ .attr("class", "d3-tip")
+ .offset([0, tipoffsetwidth])
+ .html(function(d) { return d.Candidate + ": " + d3.format(',')(d.count); });
+
+chart.call(tip);
+
+
+<!-- Have flask pass in the data file -->
+d3.csv( "{{ url_for('static', filename=output) }}", type, function(error, data) {
+ 
+  y1.rangeBands([0, data.length*barHeight], .1)
+        .domain(data.map(function(d) { return d.Candidate; }));
+  x.domain([0, d3.max(data, function(d) { return d.count/2; })]);
+
+ chart.attr("height", barHeight*data.length);
+
+
+  var state = chart.selectAll("g")
+      .data(data)
+    .enter().append("g")
+     .attr("transform", function(d, i) { return "translate( " + yaxislabelwidth + "," + (i*barHeight) + ")"; });
+
+
+  state.append("rect")
+     .attr("height", barHeight-1)
+     .attr("width", function(d) { return x(d.count/2); })
+      .style("fill", function(d) { return color(d.Candidate); })
+        .on("mouseover", tip.show)
+        .on("mouseout", tip.hide);
+
+  <!-- Add logic to move text to the right of the bar if the bar is too small -->
+  state.append("text")
+        .attr("x", function(d) { var origx = x(d.count/2)-3; if (origx<40) { if (origx<20) return origx+50; else return origx+50; } else return origx; })
+        .attr("y", barHeight/2)
+        .style("fill", function(d) { var origx=x(d.count/2)-3; if (origx<40) return "black"; else return "white"; })
+        .attr("dy", ".35em")
+        .text(function(d) { return d3.format(',')(d.count); });
+
+  var myaxis = chart.append("g")
+        .attr("transform", function(d, i) { return "translate(20," + i * barHeight + ")"; })
+        .call(yAxis);
+
+        myaxis.selectAll("text")
+                .style("text-anchor", "start")
+                .style("fill", "black");
+});
+
+function type(d) {
+  d.count = +d.count; // coerce to number
+  return d;
+}
+
+
+
+function wrap(text, width) {
+  text.each(function() {
+    var text = d3.select(this),
+        words = text.text().split(/\s+/).reverse(),
+        word,
+        line = [],
+        lineNumber = 0,
+        lineHeight = 1.1, // ems
+        y = text.attr("y"),
+        dy = parseFloat(text.attr("dy")),
+        tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
+    while (word = words.pop()) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      if (tspan.node().getComputedTextLength() > width) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+      }
+    }
+  });
+}
+
+</script>
+
+{% endblock %}
+
