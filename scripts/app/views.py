@@ -27,5 +27,11 @@ def candidateblock():
         print mystring
         return render_template('namecrawlerresults.html', output=Markup(mystring))
 
+from app import app
+@app.route('/summary<year>')
+def summary(year):
+	data_file="nov" + year + ".csv"
+        return render_template("candidateresults.html", timeframe=year, output=d
+ata_file)
 
 
