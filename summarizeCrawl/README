@@ -1,0 +1,1 @@
+This is a simple separate program to aggregate and print out results that will then be displayed through Flask and d3 charts.
