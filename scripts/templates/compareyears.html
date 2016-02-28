@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block comparecandidateschart %}
+
+
+<h3 style="text-align:center;margin-left:5px">What a difference a year makes: Web mentions change drastically from a year ago</h3>
+
+<ul style="border: 1px solid; margin: 20px; padding: 10px; width: 300px; list-style: none;"><b>LEGEND</b><br>
+                <br><li><span class="legendline" style="color:#4daf4a"></span>&nbspNovember 2014</li>
+                <br><li><span class="legendline" style="color:#984ea3"></span>&nbspNovember 2015</li>
+                </ul>
+
+
+<svg class="chart"></svg></a>
+
+<script src="http://d3js.org/d3.v3.min.js"></script>
+ <script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
+ <script>
+
+var window_width = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+
+var margin = {top: 20, right: 25, bottom: 50, left: 120},
+        width = window_width - margin.left - margin.right,
+        height = 5950 - margin.top - margin.bottom,
+        yaxislabelwidth = 200,
+        stateyaxislabelwidth = 200,
+        tipoffsetwidth = 20,
+        barHeight = 100;
+
+if (width - margin.left - margin.right < 0) 
+width = margin.left+margin.right;
+
+
+var x = d3.scale.linear()
+        .range([0, width-margin.left-margin.right]);
+
+var y1 = d3.scale.ordinal();
+
+var y0 = d3.scale.ordinal()
+        .rangeRoundBands([0, height], .1);
+        
+var color = d3.scale.ordinal()
+<!--    .range(["#a6cee3", "#1f78b4", "#b2df8a", "#33a02c"]); -->
+        .range(["#4daf4a", "#984ea3","#ffff33"]);
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .tickSize(0)
+    .orient("bottom");
+
+var yAxis = d3.svg.axis()
+    .scale(y0)
+    .orient("left")
+    .tickSize(0);
+
+var chart = d3.select(".chart")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+var tip = d3.tip()
+ .attr("class", "d3-tip")
+ .offset([0, tipoffsetwidth])
+.html(function(d) { return d.name + ": " + d3.format(',')(d.value); });
+
+chart.call(tip);
+
+
+
+d3.csv( "{{ url_for('static', filename='compare2015-14.csv') }}", type, function(error, data) {
+ 
+
+ var categories = d3.keys(data[0]).filter(function(key) { if (key !== 'value' && key !== 'Candidate') { return key; } }); 
+ 
+data.forEach(function(d) {
+    d.categoryarray = categories.map(function(name) { return {name: name, value: +d[name]}; });
+  });
+
+
+  y0.rangeBands([0, data.length*barHeight], .1)
+        .domain(data.map(function(d) { return d.Candidate; }));
+  y1.domain(categories).rangeRoundBands([0, y0.rangeBand()], .1);
+  x.domain([0, d3.max(data, function(d) { return d3.max(d.categoryarray, function(d) { return d.value; }); })]);
+
+
+  var myaxis = chart.append("g")
+      .attr("class", "y axis")
+      .call(yAxis);
+
+  myaxis.selectAll("text").call(wrap, margin.left-10).style("text-anchor", "end");
+
+
+  var state = chart.selectAll(".Candidate")
+      .data(data)
+    .enter().append("g")
+      .attr("class", "g")
+      .attr("transform", function(d) { return "translate( 0," + y0(d.Candidate) + ")"; });
+
+
+  state.selectAll("rect")
+      .data(function(d) { return d.categoryarray; })
+    .enter().append("g").append("rect")
+      .attr("height", y1.rangeBand())
+      .attr("y", function(d) { return y1(d.name); })
+      .attr("width", function(d) { var val = (isNaN(d.value) ? 0 : d.value); return x(val); })
+      .style("fill", function(d) { return color(d.name); })
+        .on("mouseover", tip.show)
+        .on("mouseout", tip.hide);
+
+  state.selectAll("g.rect")
+        .data(function(d) { return d.categoryarray; })
+        .enter().append("g")
+        .append("text")
+        .attr("x", function(d) { var origx = x(d.value)-3; if (origx<40) { if (origx<20) return origx+50; else return origx+50; } else return origx; })
+        .attr("y", function(d) { return y1(d.name)+((barHeight)/4); })
+        .style("fill", function(d) { var origx=x(d.value)-3; if (origx<40) return "black"; else return "white"; })
+        .attr("dy", ".35em")
+        .text(function(d) { return d3.format(',')(d.value); });
+        
+
+
+});
+
+function type(d) {
+  d.value = +d.value; // coerce to number
+  return d;
+}
+
+
+function wrap(text, width) {
+  text.each(function() {
+    var text = d3.select(this),
+        words = text.text().split(/\s+/).reverse(),
+        word,
+        line = [],
+        lineNumber = 0,
+        lineHeight = 1.1, // ems
+        y = text.attr("y"),
+        dy = parseFloat(text.attr("dy")),
+        tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
+    while (word = words.pop()) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      if (tspan.node().getComputedTextLength() > width) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+      }
+    }
+  });
+}
+
+</script>
+
+{% endblock %}
+
+
+        
