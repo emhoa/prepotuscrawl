@@ -34,4 +34,7 @@ def summary(year):
         return render_template("candidateresults.html", timeframe=year, output=d
 ata_file)
 
-
+from app import app
+@app.route('/compareyears')
+def compareyears():
+        return render_template("compareyears.html")
