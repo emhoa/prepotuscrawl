@@ -21,7 +21,6 @@ object summarizeCrawl {
 
  def main(args: Array[String]) {
 
-        val newTableName = "new_candidate_crawl"
         val sparkConf = new SparkConf().setAppName("summarizeCrawl")
         val sc = new SparkContext(sparkConf)
 
@@ -83,6 +82,6 @@ object summarizeCrawl {
 
         }
         //Print to stdout for now but long-term should direct to file
-        println("Name,value\ntrump,%d\nclinton,%d\ncruz,%d\nsanders,%d\nTrump-Clinton,%d\nTrump-Cruz,%d\nTrump-Sanders,%d\nClinton-Cruz,%d\nClinton-Sanders,%d\nCruz-Sanders,%d\nTrump-Clinton-Cruz,%d\nTrump-Clinton-Sanders,%d\nTrump-Cruz-Sanders,%d\nClinton-Cruz-Sanders,%d\nTrump-Clinton-Cruz-Sanders,%d\n".format(trump, clinton, cruz, sanders, dh, dt, db, ht, hb, bt, dht, dhb, dbt, hbt, dhbt))
+        println("Candidate,count\nDonald Trump,%d\nHillary Clinton,%d\nTed Cruz,%d\nBernie Sanders,%d\nTrump-Clinton,%d\nTrump-Cruz,%d\nTrump-Sanders,%d\nClinton-Cruz,%d\nClinton-Sanders,%d\nCruz-Sanders,%d\nTrump-Clinton-Cruz,%d\nTrump-Clinton-Sanders,%d\nTrump-Cruz-Sanders,%d\nClinton-Cruz-Sanders,%d\nTrump-Clinton-Cruz-Sanders,%d\n".format(trump, clinton, cruz, sanders, dh, dt, db, ht, hb, bt, dht, dhb, dbt, hbt, dhbt))
     }
   }
