@@ -1,0 +1,52 @@
+.axis path, .axis line {
+  fill:none;
+  shape-rendering: crispEdges;
+}
+
+.chart rect {
+
+}
+
+.chart rect:hover {
+  fill: red;
+}
+
+.charttick text {
+ fill: black;
+ font-family: Arial;
+ font-weight: 700;
+ text-anchor: start;
+}
+
+
+.chart text {
+  fill: black;
+  font: 12px Arial;
+  text-anchor: end;
+}
+
+.chart {
+  visibility: visible;
+}
+
+.d3-tip a {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.d3-tip {
+  line-height: 1;
+  font: 12px Futura Today;
+  font-weight: bold;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 2px;
+}
+
+.legendline {
+  border: 3px solid;
+  line-height: .1;
+  list-style: none;
+  font-family: Futura Today;
+}
