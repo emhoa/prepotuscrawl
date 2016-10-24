@@ -14,6 +14,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat
 import org.apache.hadoop.io.{Text, LongWritable}
 import org.apache.hadoop.fs.Path
 
+
 import com.esotericsoftware.kryo.Kryo
 import com.esotericsoftware.kryo.Serializer
 import com.esotericsoftware.kryo.io.Input
@@ -78,7 +79,7 @@ object crawlNames {
        var hdFiles = new Array[RDD[(LongWritable, Text)]](3)
 
         // Iterate through the 35,700 file names
-        val allgzcrawlFiles = gzcrawlFiles.collect()
+        val allgzcrawlFiles = gzcrawlFiles.take(5)
 
         for (crawlFile <- allgzcrawlFiles) {
 
@@ -102,7 +103,7 @@ object crawlNames {
 
                         val hdFile = hdFiles(i-3).union(hdFiles(i-2).union(hdFiles(i-1)))
                         // Send the three-large RDD for saving
-                        //saveCrawlData(crawlFileID, hdFile)
+                        saveCrawlData(crawlFileID, hdFile)
 
                         // Reset batch counter
                         i=0
@@ -115,4 +116,19 @@ object crawlNames {
 
 
   }
+
+        // function to parse RDD and save to HBase
+        def saveCrawlData(crawlFileID: String, hdFile: RDD[(LongWritable, Text)]) {
+                val crawlData = hdFile.map(_._2.toString)
+
+                //Grab URL and make that the key; value is the rest of record
+                val keyValCrawlData = crawlData.map(x=>(x.split("\n")(0), x))
+
+                //Filter to subset of interested names
+                val urlsSubset = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") || value.contains("Hillary Clinton") || value.contains("Ted Cruz") || value.contains("Bernie Sanders") }
+
+		urlsSubset.saveAsTextFile("/tmp/hoa" + crawlFileID)
+
+
+        }
 }
