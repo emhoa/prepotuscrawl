@@ -127,7 +127,7 @@ object crawlNames {
                 //Filter to subset of interested names
                 val urlsSubset = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") || value.contains("Hillary Clinton") || value.contains("Ted Cruz") || value.contains("Bernie Sanders") }
 
-		urlsSubset.saveAsTextFile("/tmp/hoa" + crawlFileID)
+		urlsSubset.saveAsTextFile("hdfs://ip-172-31-1-235:9000/tmp/hoa" + crawlFileID)
 
 
         }
