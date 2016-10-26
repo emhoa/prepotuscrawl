@@ -51,8 +51,8 @@ object crawlNames {
 
         // Setting up configuration variables
        val hadoopConf = sc.hadoopConfiguration
-        hadoopConf.set("fs.s3a.awsAccessKeyId", awsAccessKeyId)
-        hadoopConf.set("fs.s3a.awsSecretAccessKey", awsSecretAccessKey)
+        hadoopConf.set("fs.s3a.access.key", awsAccessKeyId)
+        hadoopConf.set("fs.s3a.secret.key", awsSecretAccessKey)
         
         // Increase connection configs to prevent S3 socket timeout errors
         hadoopConf.set("fs.s3a.connection.maximum", "500")
@@ -61,8 +61,8 @@ object crawlNames {
         val localConfig = new Configuration()
         localConfig.set("textinputformat.record.delimiter", "WARC-Target-URI: ")
 
-        localConfig.set("fs.s3a.awsAccessKeyId", awsAccessKeyId)
-        localConfig.set("fs.s3a.awsSecretAccessKey", awsSecretAccessKey)
+        localConfig.set("fs.s3a.access.key", awsAccessKeyId)
+        localConfig.set("fs.s3a.secret.key", awsSecretAccessKey)
         localConfig.set("fs.s3a.connection.maximum", "500")
         localConfig.set("fs.s3a.connection.timeout", "10000")
         
@@ -127,7 +127,7 @@ object crawlNames {
                 //Filter to subset of interested names
                 val urlsSubset = keyValCrawlData.filter{ case (key, value) => value.contains("Donald Trump") || value.contains("Hillary Clinton") || value.contains("Ted Cruz") || value.contains("Bernie Sanders") }
 
-		urlsSubset.saveAsTextFile("hdfs://ip-172-31-1-235:9000/tmp/hoa" + crawlFileID)
+		urlsSubset.saveAsTextFile("hdfs://ip-172-31-1-228:9000/tmp/hoa" + crawlFileID)
 
 
         }
